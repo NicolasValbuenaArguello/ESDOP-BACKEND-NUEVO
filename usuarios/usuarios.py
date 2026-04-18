@@ -1,26 +1,13 @@
-import os
 import asyncpg
-from typing import Optional, List
+from typing import Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from passlib.context import CryptContext
 from jose import jwt, JWTError
 
-# ==============================
-# CONFIG
-# ==============================
-class Config:
-    DB_USER = os.getenv("DB_USER", "postgres")
-    DB_PASSWORD = os.getenv("DB_PASSWORD", "NICval10**")
-    DB_HOST = os.getenv("DB_HOST", "172.22.2.36")
-    DB_PORT = int(os.getenv("DB_PORT", 5432))
-    DB_NAME = os.getenv("DB_NAME", "esdop")
-
-    SECRET_KEY = os.getenv("SECRET_KEY", "comando_ejercito_2026**esdop")
-    ALGORITHM = "HS256"
-
+from config import Config
 
 # ==============================
 # DATABASE
@@ -59,6 +46,14 @@ class AuthService:
             raise HTTPException(401, "Token inválido")
 
 
+class PermisoPaginaInput(BaseModel):
+    tiene_permiso: bool = False
+    puede_ver: bool = False
+    puede_crear: bool = False
+    puede_editar: bool = False
+    puede_eliminar: bool = False
+
+
 # ==============================
 # MODELOS
 # ==============================
@@ -70,12 +65,18 @@ class UsuarioCreate(BaseModel):
     unidad: Optional[str] = None
     nivel_per_uni: Optional[str] = None
     unida_per: Optional[str] = None
-    roles: List[str] = []
+    roles: List[str] = Field(default_factory=list)
+    permisos: Dict[str, PermisoPaginaInput] = Field(default_factory=dict)
 
 
 class UsuarioUpdate(BaseModel):
     nombre: Optional[str] = None
     email: Optional[str] = None
+    unidad: Optional[str] = None
+    nivel_per_uni: Optional[str] = None
+    unida_per: Optional[str] = None
+    roles: Optional[List[str]] = None
+    permisos: Optional[Dict[str, PermisoPaginaInput]] = None
 
 
 # ==============================
@@ -127,6 +128,91 @@ async def check_permiso(usuario: str, ruta: str, accion: str):
         await conn.close()
 
 
+def format_permiso(permiso):
+    if not permiso:
+        return {
+            "tiene_permiso": False,
+            "puede_ver": False,
+            "puede_crear": False,
+            "puede_editar": False,
+            "puede_eliminar": False,
+        }
+
+    return {
+        "tiene_permiso": permiso.get("out_tiene_permiso", False),
+        "puede_ver": permiso.get("out_puede_ver", False),
+        "puede_crear": permiso.get("out_puede_crear", False),
+        "puede_editar": permiso.get("out_puede_editar", False),
+        "puede_eliminar": permiso.get("out_puede_eliminar", False),
+    }
+
+
+async def guardar_permisos_usuario(conn, usuario_id: int, permisos: Dict[str, PermisoPaginaInput]):
+    await conn.execute("DELETE FROM usuario_pagina WHERE usuario_id=$1", usuario_id)
+
+    if not permisos:
+        return
+
+    rutas = list(permisos.keys())
+    paginas = await conn.fetch(
+        "SELECT id, ruta FROM paginas WHERE ruta = ANY($1::text[])",
+        rutas,
+    )
+    paginas_por_ruta = {pagina["ruta"]: pagina["id"] for pagina in paginas}
+
+    rutas_no_encontradas = [ruta for ruta in rutas if ruta not in paginas_por_ruta]
+    if rutas_no_encontradas:
+        raise HTTPException(
+            400,
+            f"Paginas no encontradas para permisos: {', '.join(rutas_no_encontradas)}",
+        )
+
+    registros = []
+    for ruta, permiso in permisos.items():
+        registros.append(
+            (
+                usuario_id,
+                paginas_por_ruta[ruta],
+                permiso.tiene_permiso,
+                permiso.puede_ver,
+                permiso.puede_crear,
+                permiso.puede_editar,
+                permiso.puede_eliminar,
+            )
+        )
+
+    await conn.executemany(
+        """
+        INSERT INTO usuario_pagina (
+            usuario_id,
+            pagina_id,
+            tiene_permiso,
+            puede_ver,
+            puede_crear,
+            puede_editar,
+            puede_eliminar
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        """,
+        registros,
+    )
+
+
+async def guardar_roles_usuario(conn, usuario_id: int, roles: List[str]):
+    await conn.execute("DELETE FROM usuario_rol WHERE usuario_id=$1", usuario_id)
+
+    if not roles:
+        return
+
+    await conn.executemany(
+        """
+        INSERT INTO usuario_rol (usuario_id, rol_id)
+        SELECT $1, id FROM roles WHERE nombre=$2
+        """,
+        [(usuario_id, rol) for rol in roles],
+    )
+
+
 # ==============================
 # CREATE
 # ==============================
@@ -155,11 +241,8 @@ async def crear_usuario(data: UsuarioCreate, user=Depends(get_current_user)):
         data.unida_per
         )
 
-        if data.roles:
-            await conn.executemany("""
-                INSERT INTO usuario_rol (usuario_id, rol_id)
-                SELECT $1, id FROM roles WHERE nombre=$2
-            """, [(row["id"], r) for r in data.roles])
+        await guardar_roles_usuario(conn, row["id"], data.roles)
+        await guardar_permisos_usuario(conn, row["id"], data.permisos)
 
         return {
             "msg": "Usuario creado correctamente",
@@ -175,10 +258,6 @@ async def crear_usuario(data: UsuarioCreate, user=Depends(get_current_user)):
 # ==============================
 @app.get("/usuarios")
 async def listar_usuarios(user=Depends(get_current_user)):
-
-    if not await check_permiso(user["sub"], "/usuarios/listado", "ver"):
-        raise HTTPException(403, "Sin permisos")
-
     conn = await Database.get_connection()
 
     try:
@@ -209,14 +288,14 @@ async def listar_usuarios(user=Depends(get_current_user)):
                     SELECT * FROM obtener_permisos_usuario_pagina($1, $2)
                 """, u["usuario"], p["ruta"])
 
-                permisos[p["ruta"]] = dict(perm) if perm else {}
+                permisos[p["ruta"]] = format_permiso(dict(perm) if perm else None)
 
             resultado.append({
                 **dict(u),
                 "roles": u["roles"],
                 "permisos": permisos
             })
-
+        print(resultado)
         return resultado
 
     finally:
@@ -228,19 +307,24 @@ async def listar_usuarios(user=Depends(get_current_user)):
 # ==============================
 @app.put("/usuarios/{id}")
 async def actualizar_usuario(id: int, data: UsuarioUpdate, user=Depends(get_current_user)):
-
-    if not await check_permiso(user["sub"], "/usuarios/listado", "editar"):
-        raise HTTPException(403, "Sin permisos")
-
     conn = await Database.get_connection()
 
     try:
         await conn.execute("""
             UPDATE usuarios
             SET nombre = COALESCE($1, nombre),
-                email = COALESCE($2, email)
-            WHERE id=$3
-        """, data.nombre, data.email, id)
+                email = COALESCE($2, email),
+                unidad = COALESCE($3, unidad),
+                nivel_per_uni = COALESCE($4, nivel_per_uni),
+                unida_per = COALESCE($5, unida_per)
+            WHERE id=$6
+        """, data.nombre, data.email, data.unidad, data.nivel_per_uni, data.unida_per, id)
+
+        if data.roles is not None:
+            await guardar_roles_usuario(conn, id, data.roles)
+
+        if data.permisos is not None:
+            await guardar_permisos_usuario(conn, id, data.permisos)
 
         return {
             "msg": "Usuario actualizado correctamente",
@@ -256,10 +340,6 @@ async def actualizar_usuario(id: int, data: UsuarioUpdate, user=Depends(get_curr
 # ==============================
 @app.delete("/usuarios/{id}")
 async def eliminar_usuario(id: int, user=Depends(get_current_user)):
-
-    if not await check_permiso(user["sub"], "/usuarios/listado", "eliminar"):
-        raise HTTPException(403, "Sin permisos")
-
     conn = await Database.get_connection()
 
     try:

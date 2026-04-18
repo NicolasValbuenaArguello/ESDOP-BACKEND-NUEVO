@@ -1,4 +1,3 @@
-import os
 import time
 import asyncio
 import logging
@@ -12,26 +11,13 @@ from pydantic import BaseModel
 from passlib.context import CryptContext
 from jose import jwt, JWTError
 
+from config import Config
+
 # ==============================
 # LOGGING
 # ==============================
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("auth")
-
-# ==============================
-# CONFIG
-# ==============================
-class Config:
-    DB_USER = os.getenv("DB_USER", "postgres")
-    DB_PASSWORD = os.getenv("DB_PASSWORD", "NICval10**")
-    DB_HOST = os.getenv("DB_HOST", "172.22.2.36")
-    DB_PORT = int(os.getenv("DB_PORT", 5432))
-    DB_NAME = os.getenv("DB_NAME", "esdop")
-
-    SECRET_KEY = os.getenv("SECRET_KEY", "comando_ejercito_2026**esdop")
-    ALGORITHM = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
 
 # ==============================
 # DATABASE (POOL 🔥)

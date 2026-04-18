@@ -30,7 +30,26 @@ CREATE TABLE IF NOT EXISTS grados (
     abreviatura VARCHAR(20),
     nivel INTEGER NOT NULL
 );
-
+INSERT INTO grados (nombre, abreviatura, nivel) VALUES
+('General', 'Gr.', 1),
+('Mayor General', 'MG', 2),
+('Brigadier General', 'BG', 3),
+('Coronel', 'Cr.', 4),
+('Teniente Coronel', 'TC', 5),
+('Mayor', 'My.', 6),
+('Capitán', 'CT.', 7),
+('Teniente', 'Te.', 8),
+('Subteniente', 'St.', 9),
+('Sargento Mayor Comando', 'SMC', 10),
+('Sargento Mayor', 'SM', 11),
+('Sargento Primero', 'SP', 12),
+('Sargento Viceprimero', 'SV', 13),
+('Sargento Segundo', 'SS', 14),
+('Cabo Primero', 'Cp.', 15),
+('Cabo Segundo', 'Cs.', 16),
+('Cabo Tercero', 'C3.', 17),
+('Soldado', 'Sdlo.', 18)
+ON CONFLICT DO NOTHING;
 -- ============================================================
 -- PAGINAS
 -- ============================================================
