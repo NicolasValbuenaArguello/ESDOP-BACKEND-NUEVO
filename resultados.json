@@ -1,0 +1,45 @@
+{
+    "resultados": [
+        {
+            "id": 1,
+            "resultado": "Capruras",
+            "cantidad": 85,
+            "divisiones":[
+                {
+                    "id": 1,
+                    "nombre": "División A",
+                    "cantidad": 90
+                },
+                {
+                    "id": 2,
+                    "nombre": "División B",
+                    "cantidad": 80
+                }
+            ],
+            "enemigo":[
+                {
+                    "nombre": "Enemigo A",
+                    "cantidad": 30
+                },
+                {
+                    "nombre": "Enemigo B",
+                    "cantidad": 20
+                }
+            ],
+            "hechos":[
+               {"hecho": "hechos1", "descripcion": "Descripción del hecho 1"},
+               {"hecho": "hechos2", "descripcion": "Descripción del hecho 2"}
+            ]
+        },
+        {
+            "id": 2,
+            "resultado": "María Gómez",
+            "puntaje": 92
+        },
+        {
+            "id": 3,
+            "resultado": "Carlos Rodríguez",
+            "puntaje": 78
+        }
+    ]
+}
