@@ -1,45 +1,115 @@
 {
-    "resultados": [
-        {
-            "id": 1,
-            "resultado": "Capruras",
-            "cantidad": 85,
-            "divisiones":[
-                {
-                    "id": 1,
-                    "nombre": "División A",
-                    "cantidad": 90
-                },
-                {
-                    "id": 2,
-                    "nombre": "División B",
-                    "cantidad": 80
-                }
-            ],
-            "enemigo":[
-                {
-                    "nombre": "Enemigo A",
-                    "cantidad": 30
-                },
-                {
-                    "nombre": "Enemigo B",
-                    "cantidad": 20
-                }
-            ],
-            "hechos":[
-               {"hecho": "hechos1", "descripcion": "Descripción del hecho 1"},
-               {"hecho": "hechos2", "descripcion": "Descripción del hecho 2"}
-            ]
-        },
-        {
-            "id": 2,
-            "resultado": "María Gómez",
-            "puntaje": 92
-        },
-        {
-            "id": 3,
-            "resultado": "Carlos Rodríguez",
-            "puntaje": 78
-        }
-    ]
+  "eventos": [
+    {
+      "id": 1,
+      "categoria": "Afectación al enemigo",
+      "tipo": "Capturas",
+      "cantidad_total": 12,
+      "puntos": [
+        { "latitud": 7.1193, "longitud": -73.1227, "cantidad": 3, "ubicacion": "Antioquia", "division": "DIV07" },
+        { "latitud": 6.8000, "longitud": -73.2000, "cantidad": 4, "ubicacion": "Santander", "division": "DIV02" },
+        { "latitud": 7.2000, "longitud": -72.9000, "cantidad": 5, "ubicacion": "Norte de Santander", "division": "DIV30" }
+      ]
+    },
+    {
+      "id": 2,
+      "categoria": "Afectación al enemigo",
+      "tipo": "Presentaciones",
+      "cantidad_total": 8,
+      "puntos": [
+        { "latitud": 4.1420, "longitud": -73.6266, "cantidad": 3, "ubicacion": "Meta", "division": "DIV04" },
+        { "latitud": 2.5700, "longitud": -72.6400, "cantidad": 5, "ubicacion": "Guaviare", "division": "DIV22" }
+      ]
+    },
+    {
+      "id": 3,
+      "categoria": "Afectación al enemigo",
+      "tipo": "Sometimientos",
+      "cantidad_total": 6,
+      "puntos": [
+        { "latitud": 1.2892, "longitud": -77.3579, "cantidad": 2, "ubicacion": "Nariño", "division": "DIV03" },
+        { "latitud": 2.4448, "longitud": -76.6147, "cantidad": 4, "ubicacion": "Cauca", "division": "DIV08" }
+      ]
+    },
+    {
+      "id": 4,
+      "categoria": "Afectación al narcotráfico",
+      "tipo": "Laboratorios destruidos",
+      "cantidad_total": 5,
+      "puntos": [
+        { "latitud": 0.4350, "longitud": -76.5270, "cantidad": 2, "ubicacion": "Putumayo", "division": "DIV06" },
+        { "latitud": 1.6144, "longitud": -75.6062, "cantidad": 3, "ubicacion": "Caquetá", "division": "DIV12" }
+      ]
+    },
+    {
+      "id": 5,
+      "categoria": "Afectación al narcotráfico",
+      "tipo": "Incautación de cocaína",
+      "cantidad_total": 220,
+      "puntos": [
+        { "latitud": 3.4516, "longitud": -76.5320, "cantidad": 120, "ubicacion": "Valle del Cauca", "division": "DIV03" },
+        { "latitud": 8.0847, "longitud": -72.8000, "cantidad": 100, "ubicacion": "Norte de Santander", "division": "DIV30" }
+      ]
+    },
+    {
+      "id": 6,
+      "categoria": "Afectación al narcotráfico",
+      "tipo": "Incautación de marihuana",
+      "cantidad_total": 180,
+      "puntos": [
+        { "latitud": 2.4448, "longitud": -76.6147, "cantidad": 80, "ubicacion": "Cauca", "division": "DIV08" },
+        { "latitud": 3.8000, "longitud": -75.9000, "cantidad": 100, "ubicacion": "Huila", "division": "DIV05" }
+      ]
+    },
+    {
+      "id": 7,
+      "categoria": "Afectación minería ilegal",
+      "tipo": "Capturas",
+      "cantidad_total": 9,
+      "puntos": [
+        { "latitud": 5.6947, "longitud": -76.6610, "cantidad": 5, "ubicacion": "Chocó", "division": "DIV15" },
+        { "latitud": 6.2442, "longitud": -75.5812, "cantidad": 4, "ubicacion": "Antioquia", "division": "DIV07" }
+      ]
+    },
+    {
+      "id": 8,
+      "categoria": "Afectación minería ilegal",
+      "tipo": "UPM (Unidades de Producción Minera)",
+      "cantidad_total": 7,
+      "puntos": [
+        { "latitud": 8.6704, "longitud": -74.0300, "cantidad": 3, "ubicacion": "Bolívar", "division": "DIV01" },
+        { "latitud": 7.5000, "longitud": -74.5000, "cantidad": 4, "ubicacion": "Córdoba", "division": "DIV11" }
+      ]
+    },
+    {
+      "id": 9,
+      "categoria": "Afectación minería ilegal",
+      "tipo": "Motores incautados",
+      "cantidad_total": 11,
+      "puntos": [
+        { "latitud": 5.6900, "longitud": -76.6500, "cantidad": 6, "ubicacion": "Chocó", "division": "DIV15" },
+        { "latitud": 6.5000, "longitud": -74.0000, "cantidad": 5, "ubicacion": "Antioquia", "division": "DIV07" }
+      ]
+    },
+    {
+      "id": 10,
+      "categoria": "Afectación propias tropas",
+      "tipo": "Heridos",
+      "cantidad_total": 5,
+      "puntos": [
+        { "latitud": 7.0847, "longitud": -70.7591, "cantidad": 3, "ubicacion": "Arauca", "division": "DIV18" },
+        { "latitud": 2.5729, "longitud": -72.6459, "cantidad": 2, "ubicacion": "Guaviare", "division": "DIV22" }
+      ]
+    },
+    {
+      "id": 11,
+      "categoria": "Afectación propias tropas",
+      "tipo": "Asesinados",
+      "cantidad_total": 3,
+      "puntos": [
+        { "latitud": 1.5000, "longitud": -75.5000, "cantidad": 1, "ubicacion": "Caquetá", "division": "DIV12" },
+        { "latitud": 7.0000, "longitud": -70.7000, "cantidad": 2, "ubicacion": "Arauca", "division": "DIV18" }
+      ]
+    }
+  ]
 }

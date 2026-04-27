@@ -1,49 +1,9 @@
-import asyncpg
 from typing import Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Request, Depends
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from passlib.context import CryptContext
-from jose import jwt, JWTError
 
-from config import Config
-
-# ==============================
-# DATABASE
-# ==============================
-class Database:
-    @staticmethod
-    async def get_connection():
-        try:
-            return await asyncpg.connect(
-                user=Config.DB_USER,
-                password=Config.DB_PASSWORD,
-                database=Config.DB_NAME,
-                host=Config.DB_HOST,
-                port=Config.DB_PORT
-            )
-        except Exception as e:
-            raise HTTPException(503, f"DB error: {str(e)}")
-
-
-# ==============================
-# SECURITY
-# ==============================
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-class AuthService:
-
-    @staticmethod
-    def hash_password(password: str):
-        return pwd_context.hash(password[:72])
-
-    @staticmethod
-    def verify_token(token: str):
-        try:
-            return jwt.decode(token, Config.SECRET_KEY, algorithms=[Config.ALGORITHM])
-        except JWTError:
-            raise HTTPException(401, "Token inválido")
+from login.login import AuthService, Database, get_current_user
 
 
 class PermisoPaginaInput(BaseModel):
@@ -54,9 +14,6 @@ class PermisoPaginaInput(BaseModel):
     puede_eliminar: bool = False
 
 
-# ==============================
-# MODELOS
-# ==============================
 class UsuarioCreate(BaseModel):
     nombre: str
     usuario: str
@@ -79,53 +36,36 @@ class UsuarioUpdate(BaseModel):
     permisos: Optional[Dict[str, PermisoPaginaInput]] = None
 
 
-# ==============================
-# APP
-# ==============================
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+router = APIRouter()
 
 
-# ==============================
-# AUTH
-# ==============================
-async def get_current_user(request: Request):
-    auth = request.headers.get("Authorization")
-
-    if not auth or " " not in auth:
-        raise HTTPException(401, "Token inválido")
-
-    token = auth.split(" ")[1]
-    return AuthService.verify_token(token)
+def require_pool():
+    if Database.pool is None:
+        raise HTTPException(503, "DB pool no disponible")
+    return Database.pool
 
 
-# ==============================
-# 🔥 PERMISOS (CORREGIDO)
-# ==============================
 async def check_permiso(usuario: str, ruta: str, accion: str):
-
-    conn = await Database.get_connection()
+    pool = require_pool()
 
     try:
-        permiso = await conn.fetchrow("""
-            SELECT * FROM obtener_permisos_usuario_pagina($1, $2)
-        """, usuario, ruta)
+        async with pool.acquire() as conn:
+            permiso = await conn.fetchrow(
+                """
+                SELECT * FROM obtener_permisos_usuario_pagina($1, $2)
+                """,
+                usuario,
+                ruta,
+            )
 
         if not permiso:
             return False
 
-        # 🔥 IMPORTANTE (usa out_)
         return permiso[f"out_puede_{accion}"]
-
-    finally:
-        await conn.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(503, f"DB error: {str(e)}")
 
 
 def format_permiso(permiso):
@@ -147,7 +87,9 @@ def format_permiso(permiso):
     }
 
 
-async def guardar_permisos_usuario(conn, usuario_id: int, permisos: Dict[str, PermisoPaginaInput]):
+async def guardar_permisos_usuario(
+    conn, usuario_id: int, permisos: Dict[str, PermisoPaginaInput]
+):
     await conn.execute("DELETE FROM usuario_pagina WHERE usuario_id=$1", usuario_id)
 
     if not permisos:
@@ -213,185 +155,211 @@ async def guardar_roles_usuario(conn, usuario_id: int, roles: List[str]):
     )
 
 
-# ==============================
-# CREATE
-# ==============================
-@app.post("/usuarios")
+@router.post("/usuarios")
 async def crear_usuario(data: UsuarioCreate, user=Depends(get_current_user)):
-
     if not await check_permiso(user["sub"], "/usuarios/nuevos", "crear"):
         raise HTTPException(403, "Sin permisos")
 
-    conn = await Database.get_connection()
+    pool = require_pool()
 
     try:
-        hashed = AuthService.hash_password(data.password)
+        async with pool.acquire() as conn:
+            hashed = AuthService.hash_password(data.password)
 
-        row = await conn.fetchrow("""
-            INSERT INTO usuarios (nombre, usuario, password, email, unidad, nivel_per_uni, unida_per)
-            VALUES ($1,$2,$3,$4,$5,$6,$7)
-            RETURNING id, nombre, usuario, email
-        """,
-        data.nombre,
-        data.usuario,
-        hashed,
-        data.email,
-        data.unidad,
-        data.nivel_per_uni,
-        data.unida_per
-        )
+            row = await conn.fetchrow(
+                """
+                INSERT INTO usuarios (nombre, usuario, password, email, unidad, nivel_per_uni, unida_per)
+                VALUES ($1,$2,$3,$4,$5,$6,$7)
+                RETURNING id, nombre, usuario, email
+                """,
+                data.nombre,
+                data.usuario,
+                hashed,
+                data.email,
+                data.unidad,
+                data.nivel_per_uni,
+                data.unida_per,
+            )
 
-        await guardar_roles_usuario(conn, row["id"], data.roles)
-        await guardar_permisos_usuario(conn, row["id"], data.permisos)
+            await guardar_roles_usuario(conn, row["id"], data.roles)
+            await guardar_permisos_usuario(conn, row["id"], data.permisos)
 
         return {
             "msg": "Usuario creado correctamente",
-            "usuario": dict(row)
+            "usuario": dict(row),
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(503, f"DB error: {str(e)}")
 
-    finally:
-        await conn.close()
 
-
-# ==============================
-# READ
-# ==============================
-@app.get("/usuarios")
+@router.get("/usuarios")
 async def listar_usuarios(user=Depends(get_current_user)):
-    conn = await Database.get_connection()
+    pool = require_pool()
 
     try:
-        usuarios = await conn.fetch("""
-            SELECT 
-                u.id,
-                u.nombre,
-                u.usuario,
-                u.email,
-                u.unidad,
-                COALESCE(array_agg(DISTINCT r.nombre) FILTER (WHERE r.nombre IS NOT NULL), '{}') as roles
-            FROM usuarios u
-            LEFT JOIN usuario_rol ur ON ur.usuario_id = u.id
-            LEFT JOIN roles r ON r.id = ur.rol_id
-            GROUP BY u.id
-            ORDER BY u.id DESC
-        """)
+        async with pool.acquire() as conn:
+            usuarios = await conn.fetch(
+                """
+                SELECT
+                    u.id,
+                    u.nombre,
+                    u.usuario,
+                    u.email,
+                    u.unidad,
+                    COALESCE(array_agg(DISTINCT r.nombre) FILTER (WHERE r.nombre IS NOT NULL), '{}') as roles
+                FROM usuarios u
+                LEFT JOIN usuario_rol ur ON ur.usuario_id = u.id
+                LEFT JOIN roles r ON r.id = ur.rol_id
+                GROUP BY u.id
+                ORDER BY u.id DESC
+                """
+            )
 
-        paginas = await conn.fetch("SELECT ruta FROM paginas")
+            paginas = await conn.fetch("SELECT ruta FROM paginas")
 
-        resultado = []
+            resultado = []
+            for u in usuarios:
+                permisos = {}
 
-        for u in usuarios:
-            permisos = {}
+                for p in paginas:
+                    perm = await conn.fetchrow(
+                        """
+                        SELECT * FROM obtener_permisos_usuario_pagina($1, $2)
+                        """,
+                        u["usuario"],
+                        p["ruta"],
+                    )
 
-            for p in paginas:
-                perm = await conn.fetchrow("""
-                    SELECT * FROM obtener_permisos_usuario_pagina($1, $2)
-                """, u["usuario"], p["ruta"])
+                    permisos[p["ruta"]] = format_permiso(dict(perm) if perm else None)
 
-                permisos[p["ruta"]] = format_permiso(dict(perm) if perm else None)
+                resultado.append(
+                    {
+                        **dict(u),
+                        "roles": u["roles"],
+                        "permisos": permisos,
+                    }
+                )
 
-            resultado.append({
-                **dict(u),
-                "roles": u["roles"],
-                "permisos": permisos
-            })
-        print(resultado)
         return resultado
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(503, f"DB error: {str(e)}")
 
-    finally:
-        await conn.close()
 
-
-# ==============================
-# UPDATE
-# ==============================
-@app.put("/usuarios/{id}")
+@router.put("/usuarios/{id}")
 async def actualizar_usuario(id: int, data: UsuarioUpdate, user=Depends(get_current_user)):
-    conn = await Database.get_connection()
+    pool = require_pool()
 
     try:
-        await conn.execute("""
-            UPDATE usuarios
-            SET nombre = COALESCE($1, nombre),
-                email = COALESCE($2, email),
-                unidad = COALESCE($3, unidad),
-                nivel_per_uni = COALESCE($4, nivel_per_uni),
-                unida_per = COALESCE($5, unida_per)
-            WHERE id=$6
-        """, data.nombre, data.email, data.unidad, data.nivel_per_uni, data.unida_per, id)
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE usuarios
+                SET nombre = COALESCE($1, nombre),
+                    email = COALESCE($2, email),
+                    unidad = COALESCE($3, unidad),
+                    nivel_per_uni = COALESCE($4, nivel_per_uni),
+                    unida_per = COALESCE($5, unida_per)
+                WHERE id=$6
+                """,
+                data.nombre,
+                data.email,
+                data.unidad,
+                data.nivel_per_uni,
+                data.unida_per,
+                id,
+            )
 
-        if data.roles is not None:
-            await guardar_roles_usuario(conn, id, data.roles)
+            if data.roles is not None:
+                await guardar_roles_usuario(conn, id, data.roles)
 
-        if data.permisos is not None:
-            await guardar_permisos_usuario(conn, id, data.permisos)
+            if data.permisos is not None:
+                await guardar_permisos_usuario(conn, id, data.permisos)
 
         return {
             "msg": "Usuario actualizado correctamente",
-            "id": id
+            "id": id,
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(503, f"DB error: {str(e)}")
 
-    finally:
-        await conn.close()
 
-
-# ==============================
-# DELETE
-# ==============================
-@app.delete("/usuarios/{id}")
+@router.delete("/usuarios/{id}")
 async def eliminar_usuario(id: int, user=Depends(get_current_user)):
-    conn = await Database.get_connection()
+    pool = require_pool()
 
     try:
-        await conn.execute("DELETE FROM usuarios WHERE id=$1", id)
+        async with pool.acquire() as conn:
+            await conn.execute("DELETE FROM usuarios WHERE id=$1", id)
 
         return {
             "msg": "Usuario eliminado correctamente",
-            "id": id
+            "id": id,
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(503, f"DB error: {str(e)}")
 
-    finally:
-        await conn.close()
 
-
-# ==============================
-# OTROS
-# ==============================
-@app.get("/grados")
+@router.get("/grados")
 async def listar_grados(user=Depends(get_current_user)):
-    conn = await Database.get_connection()
+    pool = require_pool()
+
     try:
-        rows = await conn.fetch("""
-            SELECT id, nombre, abreviatura, nivel
-            FROM grados
-            ORDER BY nivel ASC
-        """)
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, nombre, abreviatura, nivel
+                FROM grados
+                ORDER BY nivel ASC
+                """
+            )
         return [dict(r) for r in rows]
-    finally:
-        await conn.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(503, f"DB error: {str(e)}")
 
 
-@app.get("/paginas")
+@router.get("/paginas")
 async def listar_paginas(user=Depends(get_current_user)):
-    conn = await Database.get_connection()
+    pool = require_pool()
+
     try:
-        rows = await conn.fetch("""
-            SELECT id, menu, nombre, ruta
-            FROM paginas
-        """)
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, menu, nombre, ruta
+                FROM paginas
+                """
+            )
         return [dict(r) for r in rows]
-    finally:
-        await conn.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(503, f"DB error: {str(e)}")
 
 
-@app.get("/roles")
+@router.get("/roles")
 async def listar_roles(user=Depends(get_current_user)):
-    conn = await Database.get_connection()
+    pool = require_pool()
+
     try:
-        rows = await conn.fetch("""
-            SELECT id, nombre, descripcion
-            FROM roles
-        """)
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, nombre, descripcion
+                FROM roles
+                """
+            )
         return [dict(r) for r in rows]
-    finally:
-        await conn.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(503, f"DB error: {str(e)}")
